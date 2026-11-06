@@ -1,0 +1,56 @@
+apiVersion: appthrust.io/v1alpha1
+kind: ApplicationStackDefinition
+metadata:
+  name: llm
+spec:
+  display:
+    title: LLM
+    description: Local chat model (CPU) served inside the Project; the AI gateway's
+      in-cluster provider. No prompt or document content leaves the cluster.
+    category: assist
+    iconRef:
+      name: sparkles
+  # Publisher appends release versions here; retain the seed as the compatibility floor.
+  versions:
+  - name: 0.1.0
+    images:
+      web: ghcr.io/appthrust/platform/llm@sha256:11b201a6ecf12322a30502ca94a49f8927e0b8733e5ca1ce7dc7a2b52bff1914
+    stream: '0.1'
+    default: true
+    served: true
+  updatePolicy:
+    default: pinned
+    allowed:
+    - pinned
+    - follow
+  components:
+  - id: web
+    definitionRef:
+      name: web-service
+      version: v1
+    defaultValues:
+      tenancy: Dedicated
+      port: 8080
+      minScale: 1
+      internalService: true
+      scratchVolumes:
+      - mountPath: /home/nonroot/.ollama
+        sizeLimit: 64Mi
+      resources:
+        requests:
+          cpu: 500m
+          memory: 6Gi
+        limits:
+          cpu: '2'
+          memory: 8Gi
+      readinessProbePath: /readyz
+      livenessProbePath: /healthz
+  publish:
+    hostnameLabel: llm
+  provides:
+  - chat-completions.openai/v1
+  releaseIdentityEnvPrefix: LLM
+  health:
+    capabilities:
+    - name: inference
+      required: true
