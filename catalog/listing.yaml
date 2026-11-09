@@ -1,0 +1,64 @@
+locales:
+  en:
+    title: LLM
+    tagline: Use generative AI in your Project's apps without prompts or documents leaving the cluster.
+    overview: |
+      LLM runs a chat model on CPU inside your Project, so apps can summarise, answer questions and rewrite text without sending prompts or documents to an outside AI service. It is meant for teams that want AI features but keep their data inside their own environment.
+
+      Apps do not call LLM directly. They send requests to the Project's AI Gateway, which lists LLM as an in-cluster provider next to any external providers and applies the Project's AI policy: which providers and models are allowed and what is recorded. Knowledge, for example, uses the gateway for Ask answers, reranking and query expansion.
+
+      The model (gemma3:4b) is built into each release; nothing is downloaded at startup, and a new model arrives as a new version through the installation's update setting. LLM speaks the OpenAI-compatible chat completions API, including streamed replies, and its model list states the context window (16,384 tokens) and the recommended prompt budget (3,000 tokens) so apps can size their requests. It handles two requests at a time; further requests get an immediate busy response instead of waiting in a queue.
+
+      LLM needs no GPU node, but it reserves several gigabytes of memory in the Project. It reports ready only after the model has answered a short test prompt, and it restarts and warms up again on its own if the model process stops. Prompts, documents and answers stay inside the cluster, and the model runtime's cloud features are turned off.
+  ja:
+    title: LLM
+    tagline: プロンプトや文書をクラスタの外に出さずに、Project 内のアプリで生成 AI を使えます。
+    overview: |
+      LLM は、Project の中でチャットモデルを CPU で動かすアプリです。要約や質問への回答、文章の書き換えを、プロンプトや文書を外部の AI サービスへ送らずに行えます。AI の機能は使いたいが、データは自分たちの環境から出したくないチームに向いています。
+
+      アプリは LLM を直接呼び出しません。Project の AI ゲートウェイにリクエストを送り、ゲートウェイが LLM をクラスタ内のプロバイダーとして外部のプロバイダーと並べて扱います。どのプロバイダーとモデルを使ってよいか、何を記録するかは、Project の AI ポリシーで決まります。たとえば Knowledge は、質問への回答、検索結果の並べ替え、クエリの補完にゲートウェイを使います。
+
+      モデル（gemma3:4b）はリリースごとに組み込まれていて、起動時のダウンロードはありません。モデルの更新は新しいバージョンとして届き、インストールの更新設定に沿って反映されます。API は OpenAI 互換のチャット補完で、ストリーミング応答にも対応しています。モデル一覧ではコンテキスト長（16,384 トークン）と推奨のプロンプト上限（3,000 トークン）を返すので、アプリ側でリクエストの大きさを調整できます。同時に処理するのは 2 件までで、それを超えたリクエストは待たせずにすぐ「混雑中」と返します。
+
+      GPU ノードは不要ですが、Project 内で数 GB のメモリを確保します。短いテスト用の問いかけにモデルが答えてはじめて準備完了になり、モデルのプロセスが止まった場合は自動で再起動して準備し直します。プロンプト、文書、回答はクラスタの外に出ず、モデル実行環境のクラウド機能も無効にしています。
+highlights:
+  - screenshot: installation
+    locales:
+      en:
+        title: Runs inside your Project
+        body: The chat model runs as an app in your Project, on CPU. You need no GPU node and no account with an outside AI service, and the installation page shows whether it is ready and healthy.
+      ja:
+        title: Project の中で動く
+        body: チャットモデルは Project 内のアプリとして CPU で動きます。GPU ノードも外部 AI サービスのアカウントも要りません。準備完了かどうか、正常かどうかはインストール画面で確認できます。
+  - screenshot: ai-policy
+    locales:
+      en:
+        title: A provider for the AI Gateway
+        body: The Project's AI policy lists LLM and its model gemma3:4b next to external providers. Apps call the AI Gateway, and the policy decides which providers and models may answer and what is recorded.
+      ja:
+        title: AI ゲートウェイのプロバイダーとして
+        body: Project の AI ポリシーには、LLM とモデル gemma3:4b が外部のプロバイダーと並んで表示されます。アプリは AI ゲートウェイを呼び出し、どのプロバイダーとモデルが答えてよいか、何を記録するかはポリシーで決まります。
+  - screenshot: capability
+    locales:
+      en:
+        title: Healthy means it can answer
+        body: LLM offers OpenAI-compatible chat completions and reports ready only after the model has answered a test prompt. If the model process stops, it restarts and warms up again on its own.
+      ja:
+        title: 答えられてはじめて「正常」
+        body: LLM は OpenAI 互換のチャット補完を提供し、テスト用の問いかけにモデルが答えてから準備完了になります。モデルのプロセスが止まった場合も、自動で再起動して準備し直します。
+screenshots:
+  - name: installation
+    file: installation.webp
+    alt:
+      en: "AppThrust Dashboard installation page for LLM version 0.2.0, with Ready and Healthy badges, the app's address, and branch and update settings."
+      ja: "AppThrust ダッシュボードの LLM（バージョン 0.2.0）のインストール画面。「準備完了」「正常」のバッジ、アプリのアドレス、ブランチと更新の設定が表示されています。"
+  - name: ai-policy
+    file: ai-policy.webp
+    alt:
+      en: "The Project's effective AI policy in the Dashboard, listing the provider llm (llm.internal) with models gemma3* and gemma3:4b above the openai provider, plus approval modes, logging and 90-day retention."
+      ja: "ダッシュボードに表示された Project の有効な AI ポリシー。プロバイダー llm（llm.internal）とモデル gemma3*、gemma3:4b が openai の上に並び、承認モード、記録の設定、保持期間 90 日が表示されています。"
+  - name: capability
+    file: capability.webp
+    alt:
+      en: "Details of the LLM installation: catalog entry llm, application builtin-app-llm, capability chat-completions.openai/v1, and a conditions table where Ready and Healthy are True."
+      ja: "LLM のインストール詳細。カタログのエントリ llm、アプリケーション builtin-app-llm、機能 chat-completions.openai/v1 と、Ready と Healthy が True になっている条件の一覧が表示されています。"

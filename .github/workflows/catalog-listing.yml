@@ -1,0 +1,59 @@
+name: Publish LLM catalog listing
+
+# The catalog listing (catalog/listing.yaml + catalog/screenshots) is
+# presentation only: a change never implies a release. On main it replaces the
+# listing of the entry the catalog already records and requests a publication.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - catalog/listing.yaml
+      - catalog/screenshots/**
+      - hack/catalog-listing.ts
+      - .github/workflows/catalog-listing.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shares the writer with the release publisher: one read/merge/PUT at a time.
+concurrency:
+  group: llm-catalog-publish
+  cancel-in-progress: false
+
+jobs:
+  listing:
+    if: github.repository == 'appthrust/llm'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.4.1
+      - name: Validate the listing
+        run: bun hack/publish-entry.ts validate-listing
+      - name: Submit the listing
+        id: catalog
+        env:
+          CLOUD_API_URL: ${{ vars.CLOUD_API_URL || 'https://api.appthrust.com' }}
+          CLOUD_CATALOG_ADMIN_TOKEN: ${{ secrets.CLOUD_CATALOG_ADMIN_TOKEN }}
+        run: bun hack/publish-entry.ts listing
+      - name: Mint the Cloud workflow dispatch token
+        if: steps.catalog.outputs.state == 'snapshot'
+        id: cloud-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.APPTHRUST_GITHUB_ACTIONS_APP_ID }}
+          private-key: ${{ secrets.APPTHRUST_GITHUB_ACTIONS_APP_PRIVATE_KEY }}
+          owner: appthrust
+          repositories: cloud
+      - name: Dispatch Cloud catalog publication
+        if: steps.catalog.outputs.state == 'snapshot'
+        env:
+          GH_TOKEN: ${{ steps.cloud-token.outputs.token }}
+          SNAPSHOT_ID: ${{ steps.catalog.outputs.snapshot_id }}
+        run: gh api -X POST repos/appthrust/cloud/dispatches -f event_type=catalog-publish -f "client_payload[snapshot_id]=$SNAPSHOT_ID"
