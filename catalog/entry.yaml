@@ -47,6 +47,16 @@ spec:
       livenessProbePath: /healthz
   publish:
     hostnameLabel: llm
+  # The public hostname exists for the Project's own tooling; model endpoints
+  # must not be anonymous. Consumers (AI Gateway, Knowledge) call the in-cluster
+  # Service through dependency links, never this hostname.
+  access:
+    audiences:
+    - appthrust-platform-api
+    scopes:
+    - openid
+    - profile
+    - email
   provides:
   - chat-completions.openai/v1
   releaseIdentityEnvPrefix: LLM
