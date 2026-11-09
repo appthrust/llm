@@ -15,7 +15,7 @@ authentication layer. The app releases independently of the platform.
 
 Use Go 1.26 or newer and Bun 1.4.1. The public Go SDK is
 [`github.com/appthrust/appserver-go`](https://github.com/appthrust/appserver-go),
-pinned to `v0.1.0` without a local replacement. No platform checkout is needed.
+pinned to `v0.3.0` without a local replacement. No platform checkout is needed.
 
 ```sh
 go build ./...
@@ -151,6 +151,9 @@ mode does not signal or configure the external process; that process's owner
 must apply its environment settings.
 
 ## Release
+
+Next release: **`v0.3.0`**, upgrading the shared server SDK to v0.3.0.
+The catalog publisher appends the built image; existing version digests stay immutable.
 
 Create and push a SemVer tag, starting with `v0.2.0` (the existing catalog floor
 owns `0.1.0`):
