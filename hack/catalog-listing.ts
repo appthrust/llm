@@ -60,8 +60,9 @@ const localeTag = /^[a-z]{2,3}$/
 const dnsLabel = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
 const versionName = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/
 
+// Limits are UTF-8 bytes, as the Cloud store and the CRD measure them.
 function bound(value: string | undefined, max: number, what: string): void {
-  if (value !== undefined && value.length > max) throw new Error(`${what} exceeds ${max} characters`)
+  if (value !== undefined && Buffer.byteLength(value) > max) throw new Error(`${what} exceeds ${max} UTF-8 bytes`)
 }
 
 function localizedText(text: Record<string, string> | undefined, max: number, what: string): void {
@@ -70,7 +71,7 @@ function localizedText(text: Record<string, string> | undefined, max: number, wh
   if (Object.keys(text).length > 16) throw new Error(`${what} has more than 16 locales`)
   for (const [tag, value] of Object.entries(text)) {
     if (!localeTag.test(tag)) throw new Error(`${what} locale "${tag}" must be a BCP 47 primary tag`)
-    if (!value || value.length > max) throw new Error(`${what} locale "${tag}" must be 1-${max} characters`)
+    if (!value || Buffer.byteLength(value) > max) throw new Error(`${what} locale "${tag}" must be 1-${max} UTF-8 bytes`)
   }
 }
 
@@ -95,7 +96,7 @@ export function validateListing(listing: Listing): void {
   if (screenshots.length > 8) throw new Error('listing has more than 8 screenshots')
   const names = new Set<string>()
   for (const media of screenshots) {
-    if (!dnsLabel.test(media.name) || media.name.length > 63 || names.has(media.name)) {
+    if (!dnsLabel.test(media.name) || Buffer.byteLength(media.name) > 63 || names.has(media.name)) {
       throw new Error(`screenshot name "${media.name}" is invalid or duplicated`)
     }
     names.add(media.name)
@@ -113,7 +114,7 @@ export function validateListing(listing: Listing): void {
     if (!highlight.locales || !(FALLBACK_LOCALE in highlight.locales)) throw new Error(`highlight ${index} requires the "${FALLBACK_LOCALE}" locale`)
     if (Object.keys(highlight.locales).length > 16) throw new Error(`highlight ${index} has more than 16 locales`)
     for (const [tag, locale] of Object.entries(highlight.locales)) {
-      if (!localeTag.test(tag) || !locale.title || locale.title.length > 80 || (locale.body ?? '').length > 400) {
+      if (!localeTag.test(tag) || !locale.title || Buffer.byteLength(locale.title) > 80 || Buffer.byteLength(locale.body ?? '') > 400) {
         throw new Error(`highlight ${index} locale "${tag}" is invalid`)
       }
     }
