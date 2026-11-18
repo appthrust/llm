@@ -19,6 +19,7 @@ import (
 	"github.com/appthrust/appserver-go/apphealth"
 	"github.com/appthrust/appserver-go/appserver/health"
 	"github.com/appthrust/appserver-go/appserver/ollamasupervisor"
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 )
 
 const (
@@ -105,11 +106,8 @@ func serve(ctx context.Context, listen string, cfg config) error {
 		defer close(childDone)
 		s.Run(childCtx)
 	}()
-	server := &http.Server{
-		Handler:           newHandler(cfg.model, cfg.maxPromptTokens, cfg.upstream, func() bool { return !draining.Load() && s.Ready() }, &outcomes),
-		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: requestTimeout,
-		WriteTimeout: requestTimeout + 5*time.Second, IdleTimeout: 60 * time.Second,
-	}
+	handler := newHandler(cfg.model, cfg.maxPromptTokens, cfg.upstream, func() bool { return !draining.Load() && s.Ready() }, &outcomes)
+	server := newServer(handler)
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()
 	log.Printf("llm-server listening on %s (project %s, model %s)", listener.Addr(), cfg.projectID, cfg.model)
@@ -130,4 +128,12 @@ func serve(ctx context.Context, listen string, cfg config) error {
 		return nil
 	}
 	return err
+}
+
+func newServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           requestlog.Wrap(handler, requestlog.Options{Service: "llm"}),
+		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: requestTimeout,
+		WriteTimeout: requestTimeout + 5*time.Second, IdleTimeout: 60 * time.Second,
+	}
 }

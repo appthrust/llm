@@ -15,6 +15,7 @@ import (
 	"github.com/appthrust/appserver-go/appserver/health"
 	"github.com/appthrust/appserver-go/appserver/httpx"
 	"github.com/appthrust/appserver-go/appserver/releaseidentity"
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 )
 
 const (
@@ -57,7 +58,7 @@ func newHandler(model string, maxPromptTokens int, upstream *url.URL, ready func
 	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		if !ready() {
 			outcomes.Record(false, apphealth.ReasonDependencyUnavailable)
-			writeError(w, http.StatusServiceUnavailable, "llm_unavailable", "The chat model is not ready")
+			writeError(w, r, http.StatusServiceUnavailable, "llm_unavailable", "The chat model is not ready")
 			return
 		}
 		select {
@@ -65,7 +66,7 @@ func newHandler(model string, maxPromptTokens int, upstream *url.URL, ready func
 			defer func() { <-slots }()
 		default:
 			outcomes.Record(false, apphealth.ReasonResourceExhausted)
-			writeError(w, http.StatusServiceUnavailable, "llm_busy", "At most two chat requests may run at once")
+			writeError(w, r, http.StatusServiceUnavailable, "llm_busy", "At most two chat requests may run at once")
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
@@ -86,28 +87,28 @@ func newHandler(model string, maxPromptTokens int, upstream *url.URL, ready func
 		if err != nil || body == nil {
 			var tooLarge *http.MaxBytesError
 			if errors.As(err, &tooLarge) {
-				writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "Chat request body must not exceed 4 MiB")
+				writeError(w, r, http.StatusRequestEntityTooLarge, "request_too_large", "Chat request body must not exceed 4 MiB")
 			} else {
-				writeError(w, http.StatusBadRequest, "invalid_request", "Chat request must be one JSON object")
+				writeError(w, r, http.StatusBadRequest, "invalid_request", "Chat request must be one JSON object")
 			}
 			return
 		}
 		if raw, ok := body["model"]; ok {
 			var requested string
 			if err := json.Unmarshal(raw, &requested); err != nil || requested != model {
-				writeError(w, http.StatusBadRequest, "invalid_request", "model must match LLM_MODEL")
+				writeError(w, r, http.StatusBadRequest, "invalid_request", "model must match LLM_MODEL")
 				return
 			}
 		}
 		body["model"] = modelJSON
 		payload, err := json.Marshal(body)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "internal_error", "The chat request could not be encoded")
+			writeError(w, r, http.StatusInternalServerError, "internal_error", "The chat request could not be encoded")
 			return
 		}
 		request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "internal_error", "The chat request could not be created")
+			writeError(w, r, http.StatusInternalServerError, "internal_error", "The chat request could not be created")
 			return
 		}
 		request.Header.Set("Content-Type", "application/json")
@@ -115,9 +116,9 @@ func newHandler(model string, maxPromptTokens int, upstream *url.URL, ready func
 		if err != nil {
 			outcomes.Record(false, apphealth.ReasonUpstreamUnavailable)
 			if errors.Is(err, context.DeadlineExceeded) {
-				writeError(w, http.StatusGatewayTimeout, "llm_timeout", "Chat request exceeded 300 seconds")
+				writeError(w, r, http.StatusGatewayTimeout, "llm_timeout", "Chat request exceeded 300 seconds")
 			} else {
-				writeError(w, http.StatusBadGateway, "llm_upstream_unavailable", "The chat upstream could not complete this request")
+				writeError(w, r, http.StatusBadGateway, "llm_upstream_unavailable", "The chat upstream could not complete this request")
 			}
 			return
 		}
@@ -137,7 +138,13 @@ func newHandler(model string, maxPromptTokens int, upstream *url.URL, ready func
 		if response.StatusCode == http.StatusTooManyRequests {
 			class = apphealth.ReasonResourceExhausted
 		}
-		outcomes.Record(copyErr == nil && response.StatusCode >= 200 && response.StatusCode < 300, class)
+		statusOK := response.StatusCode >= 200 && response.StatusCode < 300
+		if copyErr != nil {
+			requestlog.SetOutcome(r, "interrupted", "response_copy_failed")
+		} else if !statusOK {
+			requestlog.SetOutcome(r, "failed", "upstream_http_status")
+		}
+		outcomes.Record(copyErr == nil && statusOK, class)
 	})
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]any{
@@ -151,16 +158,16 @@ func newHandler(model string, maxPromptTokens int, upstream *url.URL, ready func
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if !ready() {
-			writeError(w, http.StatusServiceUnavailable, "llm_unavailable", "The chat model is not ready")
+			writeError(w, r, http.StatusServiceUnavailable, "llm_unavailable", "The chat model is not ready")
 			return
 		}
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.Handle("GET "+health.Path, applicationHealth.Handler(releaseidentity.HealthIdentity("LLM")))
-	mux.Handle("GET /releasez", releaseidentity.NewHandler("LLM", func(w http.ResponseWriter, _ *http.Request) {
-		writeError(w, http.StatusServiceUnavailable, "release_unavailable", "LLM release status unavailable")
+	mux.Handle("GET /releasez", releaseidentity.NewHandler("LLM", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, r, http.StatusServiceUnavailable, "release_unavailable", "LLM release status unavailable")
 	}))
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]any{
@@ -183,7 +190,8 @@ func (w flushWriter) Write(p []byte) (int, error) {
 	return n, w.controller.Flush()
 }
 
-func writeError(w http.ResponseWriter, status int, code, message string) {
+func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
+	requestlog.SetError(r, httpx.Fail(status, code, message))
 	kind := "server_error"
 	if status >= 400 && status < 500 {
 		kind = "invalid_request_error"
