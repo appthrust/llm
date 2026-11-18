@@ -164,6 +164,43 @@ func TestStreamFlushesEachChunkAndPreservesDone(t *testing.T) {
 	require.Equal(t, last, string(rest))
 }
 
+func TestRequestLogRecordsInterruptedChatStream(t *testing.T) {
+	const partial = "data: private-response\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Length", "100") // EOF before the declared end of the stream.
+		_, _ = io.WriteString(w, partial)
+	}))
+	defer upstream.Close()
+	h := handlerForTest(t, upstream.URL, func() bool { return true })
+	output, err := os.CreateTemp(t.TempDir(), "stderr")
+	require.NoError(t, err)
+	defer output.Close()
+	stderr := os.Stderr
+	os.Stderr = output
+	server := newServer(h)
+	os.Stderr = stderr
+
+	w := requestForTest(server.Handler, http.MethodPost, "/v1/chat/completions?token=private-query",
+		`{"stream":true,"messages":[{"role":"user","content":"private-prompt"}]}`)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, partial, w.Body.String())
+	data, err := os.ReadFile(output.Name())
+	require.NoError(t, err)
+	line := string(data)
+	require.Equal(t, 1, strings.Count(line, "\n"))
+	require.NotContains(t, line, "private-")
+	var entry struct {
+		Service, Outcome, Reason string
+		Status                   int
+	}
+	require.NoError(t, json.Unmarshal(data, &entry))
+	require.Equal(t, "llm", entry.Service)
+	require.Equal(t, http.StatusOK, entry.Status)
+	require.Equal(t, "interrupted", entry.Outcome)
+	require.Equal(t, "response_copy_failed", entry.Reason)
+}
+
 func TestProxyRejectsThirdInFlightStream(t *testing.T) {
 	entered, release := make(chan struct{}, 2), make(chan struct{})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
