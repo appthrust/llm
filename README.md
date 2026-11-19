@@ -36,8 +36,8 @@ For a local server with an existing Ollama instance and model:
 LLM_MODEL=gemma3:4b LLM_OLLAMA_BIN= go run ./cmd/server --listen :8080
 ```
 
-Build the image on its native architecture (the final stage runs Ollama to bake
-the model). A full build downloads the model; a builder-only check does not:
+Build the image on its native architecture (the `model-builder` stage runs
+Ollama). A full build downloads the model; a builder-only check does not:
 
 ```sh
 docker build --platform linux/amd64 -t llm-local .
@@ -46,8 +46,23 @@ docker build --platform linux/amd64 --target server-builder -t llm-builder .
 
 The image preserves the pinned Ollama
 `0.40.4@sha256:926d40fd6eeeebd346b5c358a63de2a10ec995371cd93dd22f1843200694b1a6`
-base shared with Embedding. Temporary build-time Ollama identity files are
-removed. The image exposes port 8080 and starts `/llm-server` as UID 65532.
+base shared with Embedding. The model stage verifies the `gemma3:4b` manifest
+against SHA-256 `68ceab7e468a31c988b44d5a4984a0e21f58c4f7158c6ce29c1804babac38df7`;
+an upstream tag change fails the build instead of silently changing the model.
+An intentional model update must update this checksum and, when switching
+models, the model name and manifest path together.
+Only the model tree and an empty, UID-65532-owned runtime home enter the final
+image. Build-daemon identity, logs, and temporary-directory metadata do not.
+Model files/directories have fixed read-only modes and all exported timestamps
+are Unix epoch zero. The separate model `COPY --link` precedes the server copy.
+
+Publication pins the Dockerfile frontend and BuildKit and explicitly uses gzip
+level 6, so rebuilding without a model-step cache produces the same compressed
+model layer. Release labels and server changes do not affect that layer. The
+first release using this layout downloads a new model layer once; later
+server-only releases reuse it. Changing the model, layout, or serialization
+toolchain can intentionally change the layer digest and needs a fresh cold-build
+comparison. The image exposes port 8080 and starts `/llm-server` as UID 65532.
 Only `go.mod`, `go.sum`, and `cmd/server` enter the Go builder.
 
 ## HTTP contract
