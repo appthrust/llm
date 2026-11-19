@@ -3,7 +3,7 @@ module github.com/appthrust/llm
 go 1.26.0
 
 require (
-	github.com/appthrust/appserver-go v0.7.1
+	github.com/appthrust/appserver-go v0.7.2
 	github.com/stretchr/testify v1.11.1
 )
 
